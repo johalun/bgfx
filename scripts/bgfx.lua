@@ -70,6 +70,10 @@ function bgfxProjectBase(_kind, _defines)
 				buildoptions {
 					"-fPIC",
 				}
+				links {
+					"X11",
+                	"GL",
+				}
 
 			configuration {}
 		end
@@ -154,6 +158,11 @@ function bgfxProjectBase(_kind, _defines)
 			path.join(BGFX_DIR, "src/**.h"),
 			path.join(BGFX_DIR, "scripts/**.natvis"),
 		}
+
+		configuration { "linux-*" }
+			files {
+				path.join(BGFX_DIR, "src/wrap_memcpy.c")
+			}
 
 		removefiles {
 			path.join(BGFX_DIR, "src/**.bin.h"),
