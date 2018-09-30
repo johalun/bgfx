@@ -4955,6 +4955,16 @@ BGFX_C_API void bgfx_reset(uint32_t _width, uint32_t _height, uint32_t _flags, b
 	bgfx::reset(_width, _height, _flags, bgfx::TextureFormat::Enum(_format) );
 }
 
+BGFX_C_API bgfx_encoder_s* bgfx_begin()
+{
+	return (bgfx_encoder_s*)bgfx::begin();
+}
+
+BGFX_C_API void bgfx_end(bgfx_encoder_s *_encoder)
+{
+	bgfx::end((bgfx::Encoder *)_encoder);
+}
+
 BGFX_C_API uint32_t bgfx_frame(bool _capture)
 {
 	return bgfx::frame(_capture);
