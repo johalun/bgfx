@@ -80,6 +80,14 @@ project ("example-common")
 		}
 	end
 
+	configuration { "freebsd" }
+		includedirs {
+			"/usr/local/include",
+		}
+		linkoptions {
+			"-L/usr/local/lib",
+		}
+
 	configuration { "linux-steamlink" }
 		defines {
 			"EGL_API_FB",

@@ -267,6 +267,11 @@ function exampleProjectDefaults()
 			"pthread",
 		}
 
+	configuration { "freebsd" }
+		linkoptions {
+			"-L/usr/local/lib",
+		}
+
 	configuration { "linux-steamlink" }
 		links {
 			"EGL",

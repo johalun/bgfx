@@ -72,11 +72,28 @@ function bgfxProjectBase(_kind, _defines)
 				}
 				links {
 					"X11",
-                	"GL",
+					"GL",
+				}
+
+			configuration { "freebsd" }
+				buildoptions {
+					"-fPIC",
+				}
+				links {
+					"X11",
+					"GL",
+				}
+				linkoptions {
+					"-L/usr/local/lib",
 				}
 
 			configuration {}
 		end
+
+		configuration { "freebsd" }
+			includedirs {
+				"/usr/local/include",
+			}
 
 		includedirs {
 			path.join(BGFX_DIR, "3rdparty"),

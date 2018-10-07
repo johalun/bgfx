@@ -145,6 +145,11 @@ project ("texturev")
 			"pthread",
 		}
 
+	configuration { "freebsd" }
+		linkoptions {
+			"-L/usr/local/lib",
+		}
+
 	configuration { "rpi" }
 		links {
 			"X11",
