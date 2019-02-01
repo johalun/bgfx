@@ -1,6 +1,7 @@
 //
 // Copyright (C) 2002-2005  3Dlabs Inc. Ltd.
 // Copyright (C) 2013-2016 LunarG, Inc.
+// Copyright (C) 2015-2018 Google, Inc.
 //
 // All rights reserved.
 //
@@ -70,7 +71,7 @@
 // This should always increase, as some paths to do not consume
 // a more major number.
 // It should increment by one when new functionality is added.
-#define GLSLANG_MINOR_VERSION 10
+#define GLSLANG_MINOR_VERSION 11
 
 //
 // Call before doing any other compiler/linker operations.
@@ -94,7 +95,6 @@ typedef enum {
     EShLangGeometry,
     EShLangFragment,
     EShLangCompute,
-#ifdef NV_EXTENSIONS
     EShLangRayGenNV,
     EShLangIntersectNV,
     EShLangAnyHitNV,
@@ -103,7 +103,6 @@ typedef enum {
     EShLangCallableNV,
     EShLangTaskNV,
     EShLangMeshNV,
-#endif
     EShLangCount,
 } EShLanguage;         // would be better as stage, but this is ancient now
 
@@ -114,7 +113,6 @@ typedef enum {
     EShLangGeometryMask       = (1 << EShLangGeometry),
     EShLangFragmentMask       = (1 << EShLangFragment),
     EShLangComputeMask        = (1 << EShLangCompute),
-#ifdef NV_EXTENSIONS
     EShLangRayGenNVMask       = (1 << EShLangRayGenNV),
     EShLangIntersectNVMask    = (1 << EShLangIntersectNV),
     EShLangAnyHitNVMask       = (1 << EShLangAnyHitNV),
@@ -123,7 +121,6 @@ typedef enum {
     EShLangCallableNVMask     = (1 << EShLangCallableNV),
     EShLangTaskNVMask         = (1 << EShLangTaskNV),
     EShLangMeshNVMask         = (1 << EShLangMeshNV),
-#endif
 } EShLanguageMask;
 
 namespace glslang {
@@ -158,7 +155,10 @@ typedef EShTargetClientVersion EshTargetClientVersion;
 
 typedef enum {
     EShTargetSpv_1_0 = (1 << 16),
+    EShTargetSpv_1_1 = (1 << 16) | (1 << 8),
+    EShTargetSpv_1_2 = (1 << 16) | (2 << 8),
     EShTargetSpv_1_3 = (1 << 16) | (3 << 8),
+    EShTargetSpv_1_4 = (1 << 16) | (4 << 8),
 } EShTargetLanguageVersion;
 
 struct TInputLanguage {
@@ -236,6 +236,7 @@ enum EShMessages {
     EShMsgDebugInfo        = (1 << 10), // save debug information
     EShMsgHlslEnable16BitTypes  = (1 << 11), // enable use of 16-bit types in SPIR-V for HLSL
     EShMsgHlslLegalization  = (1 << 12), // enable HLSL Legalization messages
+    EShMsgHlslDX9Compatible = (1 << 13), // enable HLSL DX9 compatible mode (right now only for samplers)
 };
 
 //
@@ -417,6 +418,8 @@ public:
     void setResourceSetBinding(const std::vector<std::string>& base);
     void setAutoMapBindings(bool map);
     void setAutoMapLocations(bool map);
+    void addUniformLocationOverride(const char* name, int loc);
+    void setUniformLocationBase(int base);
     void setInvertY(bool invert);
     void setHlslIoMapping(bool hlslIoMap);
     void setFlattenUniformArrays(bool flatten);

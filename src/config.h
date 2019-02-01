@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2018 Branimir Karadzic. All rights reserved.
+ * Copyright 2011-2019 Branimir Karadzic. All rights reserved.
  * License: https://github.com/bkaradzic/bgfx#license-bsd-2-clause
  */
 
@@ -325,5 +325,9 @@ BX_STATIC_ASSERT(bx::isPowerOf2(BGFX_CONFIG_MAX_VIEWS), "BGFX_CONFIG_MAX_VIEWS m
 #ifndef BGFX_CONFIG_DEFAULT_MAX_ENCODERS
 #	define BGFX_CONFIG_DEFAULT_MAX_ENCODERS ( (0 != BGFX_CONFIG_MULTITHREADED) ? 8 : 1)
 #endif // BGFX_CONFIG_DEFAULT_MAX_ENCODERS
+
+#ifndef BGFX_CONFIG_MAX_BACK_BUFFERS
+#	define BGFX_CONFIG_MAX_BACK_BUFFERS 4
+#endif // BGFX_CONFIG_MAX_BACK_BUFFERS
 
 #endif // BGFX_CONFIG_H_HEADER_GUARD

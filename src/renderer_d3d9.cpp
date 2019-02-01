@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2018 Branimir Karadzic. All rights reserved.
+ * Copyright 2011-2019 Branimir Karadzic. All rights reserved.
  * License: https://github.com/bkaradzic/bgfx#license-bsd-2-clause
  */
 
@@ -425,8 +425,8 @@ namespace bgfx { namespace d3d9
 			m_params.BackBufferWidth  = _init.resolution.width;
 			m_params.BackBufferHeight = _init.resolution.height;
 			m_params.BackBufferFormat = adapterFormat;
-			m_params.BackBufferCount = 1;
-			m_params.MultiSampleType = D3DMULTISAMPLE_NONE;
+			m_params.BackBufferCount  = bx::clamp<uint8_t>(_init.resolution.numBackBuffers, 2, BGFX_CONFIG_MAX_BACK_BUFFERS);
+			m_params.MultiSampleType  = D3DMULTISAMPLE_NONE;
 			m_params.MultiSampleQuality = 0;
 			m_params.EnableAutoDepthStencil = TRUE;
 			m_params.AutoDepthStencilFormat = D3DFMT_D24S8;
@@ -551,7 +551,7 @@ namespace bgfx { namespace d3d9
 							}
 
 							if (BX_ENABLED(BGFX_CONFIG_DEBUG_PERFHUD)
-							&&  0 != bx::strFind(desc.Description, "PerfHUD") )
+							&&  !bx::strFind(desc.Description, "PerfHUD").isEmpty() )
 							{
 								m_adapter = ii;
 								m_deviceType = D3DDEVTYPE_REF;
@@ -1280,25 +1280,26 @@ namespace bgfx { namespace d3d9
 			bx::memCopy(m_uniforms[_loc], _data, _size);
 		}
 
-		void setMarker(const char* _marker, uint32_t _size) override
-		{
-#if BGFX_CONFIG_DEBUG_PIX
-			uint32_t size = _size*sizeof(wchar_t);
-			wchar_t* name = (wchar_t*)alloca(size);
-			mbstowcs(name, _marker, size-2);
-			PIX_SETMARKER(D3DCOLOR_MARKER, name);
-#endif // BGFX_CONFIG_DEBUG_PIX
-			BX_UNUSED(_marker, _size);
-		}
-
 		void invalidateOcclusionQuery(OcclusionQueryHandle _handle) override
 		{
 			m_occlusionQuery.invalidate(_handle);
 		}
 
-		virtual void setName(Handle _handle, const char* _name) override
+		void setMarker(const char* _marker, uint16_t _len) override
 		{
-			BX_UNUSED(_handle, _name)
+#if BGFX_CONFIG_DEBUG_PIX
+			uint32_t size = _len*sizeof(wchar_t);
+			wchar_t* name = (wchar_t*)alloca(size+2);
+			mbstowcs(name, _marker, size);
+			name[_len] = L'\0';
+			PIX_SETMARKER(D3DCOLOR_MARKER, name);
+#endif // BGFX_CONFIG_DEBUG_PIX
+			BX_UNUSED(_marker, _len);
+		}
+
+		virtual void setName(Handle _handle, const char* _name, uint16_t _len) override
+		{
+			BX_UNUSED(_handle, _name, _len)
 		}
 
 		void submitBlit(BlitState& _bs, uint16_t _view);
@@ -1921,9 +1922,9 @@ namespace bgfx { namespace d3d9
 					}
 					break;
 
-				CASE_IMPLEMENT_UNIFORM(Int1, I, int);
-				CASE_IMPLEMENT_UNIFORM(Vec4, F, float);
-				CASE_IMPLEMENT_UNIFORM(Mat4, F, float);
+				CASE_IMPLEMENT_UNIFORM(Sampler, I, int);
+				CASE_IMPLEMENT_UNIFORM(Vec4,    F, float);
+				CASE_IMPLEMENT_UNIFORM(Mat4,    F, float);
 
 				case UniformType::End:
 					break;
@@ -2394,21 +2395,21 @@ namespace bgfx { namespace d3d9
 		uint32_t magic;
 		bx::read(&reader, magic);
 
-		switch (magic)
+		const bool fragment = isShaderType(magic, 'F');
+
+		uint32_t hashIn;
+		bx::read(&reader, hashIn);
+
+		uint32_t hashOut;
+
+		if (isShaderVerLess(magic, 6) )
 		{
-		case BGFX_CHUNK_MAGIC_FSH:
-		case BGFX_CHUNK_MAGIC_VSH:
-			break;
-
-		default:
-			BGFX_FATAL(false, Fatal::InvalidShader, "Unknown shader format %x.", magic);
-			break;
+			hashOut = hashIn;
 		}
-
-		bool fragment = BGFX_CHUNK_MAGIC_FSH == magic;
-
-		uint32_t iohash;
-		bx::read(&reader, iohash);
+		else
+		{
+			bx::read(&reader, hashOut);
+		}
 
 		uint16_t count;
 		bx::read(&reader, count);
@@ -2904,18 +2905,28 @@ namespace bgfx { namespace d3d9
 
 		if (bimg::imageParse(imageContainer, _mem->data, _mem->size) )
 		{
-			uint8_t numMips = imageContainer.m_numMips;
-			const uint8_t startLod = uint8_t(bx::uint32_min(_skip, numMips-1) );
-			numMips -= startLod;
 			const bimg::ImageBlockInfo& blockInfo = bimg::getBlockInfo(bimg::TextureFormat::Enum(imageContainer.m_format) );
-			const uint32_t textureWidth  = bx::uint32_max(blockInfo.blockWidth,  imageContainer.m_width >>startLod);
-			const uint32_t textureHeight = bx::uint32_max(blockInfo.blockHeight, imageContainer.m_height>>startLod);
+
+			const uint8_t startLod = bx::min<uint8_t>(_skip, imageContainer.m_numMips-1);
+
+			bimg::TextureInfo ti;
+			bimg::imageGetSize(
+				  &ti
+				, uint16_t(imageContainer.m_width >>startLod)
+				, uint16_t(imageContainer.m_height>>startLod)
+				, uint16_t(imageContainer.m_depth >>startLod)
+				, imageContainer.m_cubeMap
+				, 1 < imageContainer.m_numMips
+				, imageContainer.m_numLayers
+				, imageContainer.m_format
+				);
+			ti.numMips = bx::min<uint8_t>(imageContainer.m_numMips-startLod, ti.numMips);
 
 			m_flags   = _flags;
-			m_width   = textureWidth;
-			m_height  = textureHeight;
-			m_depth   = imageContainer.m_depth;
-			m_numMips = numMips;
+			m_width   = ti.width;
+			m_height  = ti.height;
+			m_depth   = ti.depth;
+			m_numMips = ti.numMips;
 			m_requestedFormat = uint8_t(imageContainer.m_format);
 			m_textureFormat   = uint8_t(getViableTextureFormat(imageContainer) );
 			const bool convert = m_textureFormat != m_requestedFormat;
@@ -2924,23 +2935,23 @@ namespace bgfx { namespace d3d9
 
 			if (imageContainer.m_cubeMap)
 			{
-				createCubeTexture(textureWidth, numMips);
+				createCubeTexture(ti.width, ti.numMips);
 			}
 			else if (imageContainer.m_depth > 1)
 			{
-				createVolumeTexture(textureWidth, textureHeight, imageContainer.m_depth, numMips);
+				createVolumeTexture(ti.width, ti.height, ti.depth, ti.numMips);
 			}
 			else
 			{
-				createTexture(textureWidth, textureHeight, numMips);
+				createTexture(ti.width, ti.height, ti.numMips);
 			}
 
 			BX_TRACE("Texture %3d: %s (requested: %s), %dx%d%s%s."
 				, this - s_renderD3D9->m_textures
 				, getName( (TextureFormat::Enum)m_textureFormat)
 				, getName( (TextureFormat::Enum)m_requestedFormat)
-				, textureWidth
-				, textureHeight
+				, ti.width
+				, ti.height
 				, imageContainer.m_cubeMap ? "x6" : ""
 				, 0 != (m_flags&BGFX_TEXTURE_RT_MASK) ? " (render target)" : ""
 				);
@@ -2954,25 +2965,25 @@ namespace bgfx { namespace d3d9
 			// bytes. If actual mip size is used it causes memory corruption.
 			// http://www.aras-p.info/texts/D3D9GPUHacks.html#3dc
 			const bool useMipSize = true
-							&& imageContainer.m_format != bimg::TextureFormat::BC4
-							&& imageContainer.m_format != bimg::TextureFormat::BC5
-							;
+				&& imageContainer.m_format != bimg::TextureFormat::BC4
+				&& imageContainer.m_format != bimg::TextureFormat::BC5
+				;
 
 			for (uint8_t side = 0, numSides = imageContainer.m_cubeMap ? 6 : 1; side < numSides; ++side)
 			{
-				uint32_t width     = textureWidth;
-				uint32_t height    = textureHeight;
-				uint32_t depth     = imageContainer.m_depth;
-				uint32_t mipWidth  = imageContainer.m_width;
-				uint32_t mipHeight = imageContainer.m_height;
+				uint32_t width     = ti.width;
+				uint32_t height    = ti.height;
+				uint32_t depth     = ti.depth;
+				uint32_t mipWidth  = ti.width;
+				uint32_t mipHeight = ti.height;
 
-				for (uint8_t lod = 0, num = numMips; lod < num; ++lod)
+				for (uint8_t lod = 0, num = ti.numMips; lod < num; ++lod)
 				{
-					width     = bx::uint32_max(1, width);
-					height    = bx::uint32_max(1, height);
-					depth     = bx::uint32_max(1, depth);
-					mipWidth  = bx::uint32_max(blockInfo.blockWidth,  mipWidth);
-					mipHeight = bx::uint32_max(blockInfo.blockHeight, mipHeight);
+					width     = bx::max<uint32_t>(1, width);
+					height    = bx::max<uint32_t>(1, height);
+					depth     = bx::max<uint32_t>(1, depth);
+					mipWidth  = bx::max<uint32_t>(blockInfo.blockWidth,  mipWidth);
+					mipHeight = bx::max<uint32_t>(blockInfo.blockHeight, mipHeight);
 					uint32_t mipSize = width*height*depth*bpp/8;
 
 					bimg::ImageMip mip;
@@ -3126,7 +3137,7 @@ namespace bgfx { namespace d3d9
 		}
 	}
 
-	void TextureD3D9::resolve() const
+	void TextureD3D9::resolve(uint8_t _resolve) const
 	{
 		if (NULL != m_surface
 		&&  NULL != m_ptr)
@@ -3140,7 +3151,8 @@ namespace bgfx { namespace d3d9
 				) );
 			DX_RELEASE(surface, 1);
 
-			if (1 < m_numMips)
+			if (1 < m_numMips
+			&&  0 != (_resolve & BGFX_RESOLVE_AUTO_GEN_MIPS) )
 			{
 				m_ptr->GenerateMipSubLevels();
 			}
@@ -3196,10 +3208,11 @@ namespace bgfx { namespace d3d9
 
 		for (uint32_t ii = 0; ii < _num; ++ii)
 		{
-			TextureHandle handle = m_attachment[ii].handle;
-			if (isValid(handle) )
+			const Attachment& at = m_attachment[ii];
+
+			if (isValid(at.handle) )
 			{
-				const TextureD3D9& texture = s_renderD3D9->m_textures[handle.idx];
+				const TextureD3D9& texture = s_renderD3D9->m_textures[at.handle.idx];
 
 				if (NULL != texture.m_surface)
 				{
@@ -3208,7 +3221,7 @@ namespace bgfx { namespace d3d9
 				}
 				else
 				{
-					m_surface[ii] = texture.getSurface(uint8_t(m_attachment[ii].layer), uint8_t(m_attachment[ii].mip) );
+					m_surface[ii] = texture.getSurface(uint8_t(at.layer), uint8_t(at.mip) );
 				}
 
 				if (0 == m_num)
@@ -3250,9 +3263,11 @@ namespace bgfx { namespace d3d9
 
 		D3DPRESENT_PARAMETERS params;
 		bx::memCopy(&params, &s_renderD3D9->m_params, sizeof(D3DPRESENT_PARAMETERS) );
-		params.BackBufferFormat = TextureFormat::Count == _format ? params.BackBufferFormat : s_textureFormat[_format].m_fmt;
-		params.BackBufferWidth  = m_width;
-		params.BackBufferHeight = m_height;
+		params.BackBufferFormat   = TextureFormat::Count == _format ? params.BackBufferFormat : s_textureFormat[_format].m_fmt;
+		params.BackBufferWidth    = m_width;
+		params.BackBufferHeight   = m_height;
+		params.MultiSampleType    = s_msaa[0].m_type;
+		params.MultiSampleQuality = s_msaa[0].m_quality;
 
 		DX_CHECK(s_renderD3D9->m_device->CreateAdditionalSwapChain(&params, &m_swapChain) );
 		DX_CHECK(m_swapChain->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, &m_surface[0]) );
@@ -3328,8 +3343,13 @@ namespace bgfx { namespace d3d9
 		{
 			for (uint32_t ii = 0, num = m_numTh; ii < num; ++ii)
 			{
-				const TextureD3D9& texture = s_renderD3D9->m_textures[m_attachment[ii].handle.idx];
-				texture.resolve();
+				const Attachment& at = m_attachment[ii];
+
+				if (isValid(at.handle) )
+				{
+					const TextureD3D9& texture = s_renderD3D9->m_textures[at.handle.idx];
+					texture.resolve(at.resolve);
+				}
 			}
 		}
 	}
@@ -3380,19 +3400,24 @@ namespace bgfx { namespace d3d9
 		{
 			for (uint32_t ii = 0, num = m_numTh; ii < num; ++ii)
 			{
-				TextureHandle th = m_attachment[ii].handle;
+				const Attachment& at = m_attachment[ii];
 
-				if (isValid(th) )
+				if (isValid(at.handle) )
 				{
-					TextureD3D9& texture = s_renderD3D9->m_textures[th.idx];
+					TextureD3D9& texture = s_renderD3D9->m_textures[at.handle.idx];
+
 					if (NULL != texture.m_surface)
 					{
 						m_surface[ii] = texture.m_surface;
 						m_surface[ii]->AddRef();
 					}
+					else if (Access::Write == at.access)
+					{
+						m_surface[ii] = texture.getSurface(uint8_t(at.layer), uint8_t(at.mip) );
+					}
 					else
 					{
-						m_surface[ii] = texture.getSurface(uint8_t(m_attachment[ii].layer), uint8_t(m_attachment[ii].mip) );
+						BX_CHECK(false, "");
 					}
 				}
 			}
@@ -3733,10 +3758,11 @@ namespace bgfx { namespace d3d9
 		RenderBind currentBind;
 		currentBind.clear();
 
-		ViewState viewState(_render, false);
+		static ViewState viewState;
+		viewState.reset(_render);
 
 		DX_CHECK(device->SetRenderState(D3DRS_FILLMODE, _render->m_debug&BGFX_DEBUG_WIREFRAME ? D3DFILL_WIREFRAME : D3DFILL_SOLID) );
-		uint16_t programIdx = kInvalidHandle;
+		ProgramHandle currentProgram = BGFX_INVALID_HANDLE;
 		SortKey key;
 		uint16_t view = UINT16_MAX;
 		FrameBufferHandle fbh = { BGFX_CONFIG_MAX_FRAME_BUFFERS };
@@ -3826,7 +3852,7 @@ namespace bgfx { namespace d3d9
 					currentState.m_stencil    = newStencil;
 
 					view = key.m_view;
-					programIdx = kInvalidHandle;
+					currentProgram = BGFX_INVALID_HANDLE;
 
 					if (_render->m_view[view].m_fbh.idx != fbh.idx)
 					{
@@ -4102,18 +4128,18 @@ namespace bgfx { namespace d3d9
 				bool constantsChanged = draw.m_uniformBegin < draw.m_uniformEnd;
 				rendererUpdateUniforms(this, _render->m_uniformBuffer[draw.m_uniformIdx], draw.m_uniformBegin, draw.m_uniformEnd);
 
-				if (key.m_program != programIdx)
+				if (key.m_program.idx != currentProgram.idx)
 				{
-					programIdx = key.m_program;
+					currentProgram = key.m_program;
 
-					if (kInvalidHandle == programIdx)
+					if (!isValid(currentProgram) )
 					{
 						device->SetVertexShader(NULL);
 						device->SetPixelShader(NULL);
 					}
 					else
 					{
-						ProgramD3D9& program = m_program[programIdx];
+						ProgramD3D9& program = m_program[currentProgram.idx];
 						device->SetVertexShader(program.m_vsh->m_vertexShader);
 						device->SetPixelShader(NULL == program.m_fsh
 							? NULL
@@ -4125,9 +4151,9 @@ namespace bgfx { namespace d3d9
 						constantsChanged = true;
 				}
 
-				if (kInvalidHandle != programIdx)
+				if (isValid(currentProgram) )
 				{
-					ProgramD3D9& program = m_program[programIdx];
+					ProgramD3D9& program = m_program[currentProgram.idx];
 
 					if (constantsChanged)
 					{
@@ -4147,7 +4173,7 @@ namespace bgfx { namespace d3d9
 						}
 					}
 
-					viewState.setPredefined<4>(this, view, 0, program, _render, draw);
+					viewState.setPredefined<4>(this, view, program, _render, draw);
 				}
 
 				{
@@ -4156,13 +4182,13 @@ namespace bgfx { namespace d3d9
 						const Binding& bind = renderBind.m_bind[stage];
 						Binding& current = currentBind.m_bind[stage];
 
-						if (current.m_idx != bind.m_idx
-						||  current.m_un.m_draw.m_textureFlags != bind.m_un.m_draw.m_textureFlags
+						if (current.m_idx          != bind.m_idx
+						||  current.m_samplerFlags != bind.m_samplerFlags
 						||  programChanged)
 						{
 							if (kInvalidHandle != bind.m_idx)
 							{
-								m_textures[bind.m_idx].commit(stage, bind.m_un.m_draw.m_textureFlags, _render->m_colorPalette);
+								m_textures[bind.m_idx].commit(stage, bind.m_samplerFlags, _render->m_colorPalette);
 							}
 							else
 							{
@@ -4395,6 +4421,7 @@ namespace bgfx { namespace d3d9
 		perfStats.gpuTimerFreq  = result.m_frequency;
 		perfStats.numDraw       = statsKeyType[0];
 		perfStats.numCompute    = statsKeyType[1];
+		perfStats.numBlit       = _render->m_numBlitItems;
 		perfStats.maxGpuLatency = maxGpuLatency;
 		bx::memCopy(perfStats.numPrims, statsNumPrimsRendered, sizeof(perfStats.numPrims) );
 		m_nvapi.getMemoryInfo(perfStats.gpuMemoryUsed, perfStats.gpuMemoryMax);

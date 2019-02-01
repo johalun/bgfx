@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2018 Branimir Karadzic. All rights reserved.
+ * Copyright 2011-2019 Branimir Karadzic. All rights reserved.
  * License: https://github.com/bkaradzic/bgfx#license-bsd-2-clause
  */
 
@@ -587,6 +587,10 @@ typedef uint64_t GLuint64;
 #	define GL_MAX_ARRAY_TEXTURE_LAYERS 0x88FF
 #endif // GL_MAX_ARRAY_TEXTURE_LAYERS
 
+#ifndef GL_MAX_LABEL_LENGTH
+#	define GL_MAX_LABEL_LENGTH 0x82E8
+#endif // GL_MAX_LABEL_LENGTH
+
 #ifndef GL_QUERY_RESULT
 #	define GL_QUERY_RESULT 0x8866
 #endif // GL_QUERY_RESULT
@@ -915,6 +919,10 @@ typedef uint64_t GLuint64;
 #ifndef GL_TEXTURE
 #	define GL_TEXTURE 0x1702
 #endif // GL_TEXTURE
+
+#ifndef GL_BUFFER
+#	define GL_BUFFER 0x82E0
+#endif // GL_BUFFER
 
 // _KHR or _ARB...
 #define GL_DEBUG_OUTPUT_SYNCHRONOUS         0x8242
@@ -1245,7 +1253,7 @@ namespace bgfx { namespace gl
 		void update(uint8_t _side, uint8_t _mip, const Rect& _rect, uint16_t _z, uint16_t _depth, uint16_t _pitch, const Memory* _mem);
 		void setSamplerState(uint32_t _flags, const float _rgba[4]);
 		void commit(uint32_t _stage, uint32_t _flags, const float _palette[][4]);
-		void resolve() const;
+		void resolve(uint8_t _resolve) const;
 
 		bool isCubeMap() const
 		{
@@ -1329,6 +1337,7 @@ namespace bgfx { namespace gl
 		void destroy();
 		void init();
 		void bindInstanceData(uint32_t _stride, uint32_t _baseVertex = 0) const;
+		void unbindInstanceData() const;
 
 		void bindAttributesBegin()
 		{
@@ -1349,6 +1358,8 @@ namespace bgfx { namespace gl
 				}
 			}
 		}
+
+		void unbindAttributes();
 
 		GLuint m_id;
 
@@ -1541,6 +1552,13 @@ namespace bgfx { namespace gl
 		{
 		}
 
+		LineReader(const bx::StringView& _str)
+			: m_str(_str.getPtr() )
+			, m_pos(0)
+			, m_size(_str.getLength() )
+		{
+		}
+
 		virtual int32_t read(void* _data, int32_t _size, bx::Error* _err) override
 		{
 			if (m_str[m_pos] == '\0'
@@ -1552,7 +1570,7 @@ namespace bgfx { namespace gl
 
 			uint32_t pos = m_pos;
 			const char* str = &m_str[pos];
-			const char* nl = bx::strnl(str);
+			const char* nl = bx::strFindNl(str).getPtr();
 			pos += (uint32_t)(nl - str);
 
 			const char* eol = &m_str[pos];
